@@ -128,7 +128,7 @@ async function offline(){
  const label=$('offline-status').querySelector('span');
  if(!('serviceWorker' in navigator)){label.textContent='オンラインでプレイ';return;}
  try{
-  const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
   if(!reg.active){const worker=reg.installing||reg.waiting;if(worker)await new Promise((resolve,reject)=>{const check=()=>{if(worker.state==='activated')resolve();if(worker.state==='redundant')reject(new Error('install failed'));};worker.addEventListener('statechange',check);check();});}
   if(reg.active){label.textContent='オフライン準備完了';$('offline-status').classList.add('ready');}
   else label.textContent='オンラインでプレイ';

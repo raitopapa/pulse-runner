@@ -16,6 +16,7 @@ export class Game{
   this.player={x:cp.x,y:cp.y-44,w:28,h:44,vx:0,vy:0,hp:d.hp,maxHp:d.hp,energy:28,face:1,ground:false,wall:0,coyote:0,buffer:0,invincible:1.2,dashTime:0,dashCooldown:0,airDash:true,airJump:true,jumpLock:0,charge:0,cooldown:0,shootAnim:0,weapon:'pulse'};
   const player=this.player;player.maxHp=player.hp=d.hp+(this.save.upgrades?.length||0)*2;player.ammo={arc:28,flame:28,frost:28};
   Object.defineProperty(player,'energy',{enumerable:true,configurable:true,get:()=>player.weapon==='pulse'?28:player.ammo[player.weapon],set:v=>{if(player.weapon!=='pulse')player.ammo[player.weapon]=clamp(v,0,28);}});
+  l.hazards.forEach(h=>{h.disabled=false;h.active=false;h.warning=false;});
   this.devices=l.devices.map(o=>({...o,active:false,flash:0}));this.effects=[];this.dangerZones=[];this.afterimages=[];
   this.enemies=l.enemies.map((e,i)=>{const h=e.type==='shield'?42:e.type==='drone'||e.type==='sentry'?24:30;return {...e,y:['drone','sentry'].includes(e.type)?e.y:e.y+22-h,startX:e.x,startY:e.y,w:e.type==='shield'?34:30,h,hp:({shield:6,helmet:3,turret:5,hopper:4,sentry:4,drone:3,walker:3})[e.type],vx:-48,vy:0,face:-1,time:i*.47,cooldown:1.3+i*.31,tell:0,hit:0,slow:0,frozen:0,open:false,dead:false,ground:false};});
   this.platforms=l.platforms.map(p=>({...p,startX:p.x,dx:0,oneWay:true,kind:'moving'}));
