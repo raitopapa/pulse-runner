@@ -12,7 +12,7 @@ const sound=new Sound(save.muted);
 const game=new Game(save,onEvent);
 const renderer=new Renderer($('game'),game);
 const input=new Input($('controls'),()=>sound.unlock(),togglePause);
-let toastTimer,primaryAction=()=>{},helpResume=false,lastMode='',hudTime=0,storageFailed=false;
+let toastTimer,primaryAction=()=>{},helpResume=false,weaponResume=false,lastMode='',hudTime=0,storageFailed=false;
 
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch{if(!storageFailed){storageFailed=true;toast('このブラウザでは保存できません。現在のプレイは続けられます。');}}}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3100);}
@@ -22,6 +22,8 @@ function onEvent(type,value){
  if(type==='save'){persist();return;}
  if(type==='weapon'){toast(WEAPONS.find(w=>w.id===value).note);return;}
  if(type==='checkpoint'){sound.effect('checkpoint');toast('チェックポイント到達 — 体力回復・自動保存');}
+ if(type==='route')toast(value);
+ if(type==='upgrade'){sound.effect('device');toast('LIFE UP！ 最大体力 +2 — 永続強化を保存しました');}
  if(type==='core')toast('データコアを回収！');
  if(type==='boss')toast(value+' — BOSS SIGNAL');
  if(type==='rage')toast('PHASE 02 — 攻撃が加速する！');
@@ -47,7 +49,7 @@ function start(id,resume=false){
  game.persistCheckpoint();$('result-screen').hidden=true;sync();$('game').focus({preventScroll:true});
  if(document.fullscreenElement)screen.orientation?.lock?.('landscape').catch(()=>{});
 }
-function togglePause(onlyPause=false){if(game.mode==='playing'){game.pause();sync();}else if(game.mode==='paused'&&!onlyPause&&!$('settings').open){sound.unlock();game.resume();sync();}}
+function togglePause(onlyPause=false){if(game.mode==='playing'){game.pause();sync();}else if(game.mode==='paused'&&!onlyPause&&!$('settings').open&&!$('weapon-dialog').open){sound.unlock();game.resume();sync();}}
 function missions(){
  $('missions').replaceChildren();
  for(const s of STAGES){
@@ -55,22 +57,27 @@ function missions(){
   b.className='mission'+(s.id===3?' mission-final':'')+(cleared?' cleared':'');b.disabled=locked;b.style.setProperty('--accent',s.accent);
   b.setAttribute('aria-label',s.name+(locked?'・3つのボス撃破で解放':cleared?'・クリア済み、再出発':'・出発'));
   const reward=WEAPONS.find(w=>w.id===s.reward);
-  b.innerHTML=s.id===3?`<div class="mission-body"><span class="mission-code">Ω</span><h3>${s.name}</h3><p>${s.sub}</p><span class="final-status">${locked?'3つのボス撃破で解放':cleared?'CLEAR ✓':'出発 →'}</span></div>`:`<canvas aria-hidden="true"></canvas><div class="mission-body"><div class="mission-code"><span>${s.code} / ${s.en}</span><span>${cleared?'CLEAR ✓':'READY'}</span></div><h3>${s.name}</h3><p>${s.sub}<br>${s.gimmick}</p><div class="mission-weapon"><span class="weapon-square">${reward.short}</span><span>${reward.name}を獲得</span><span style="margin-left:auto">${save.cores[s.id]||0}/3 ◇</span></div></div>`;
+  b.innerHTML=s.id===3?`<div class="mission-body"><span class="mission-code">Ω</span><h3>${s.name}</h3><p>${s.sub}</p><span class="final-status">${locked?'3つのボス撃破で解放':cleared?'CLEAR ✓':'出発 →'}</span></div>`:`<canvas aria-hidden="true"></canvas><div class="mission-body"><div class="mission-code"><span>${s.code} / ${s.en}</span><span>${cleared?'CLEAR ✓':'READY'}</span></div><h3>${s.name}</h3><p>${s.boss}<br>${s.gimmick}</p><p class="mission-intel">弱点：${WEAPONS.find(w=>w.id===s.weak)?.name||'特殊武器'}<br>${s.route}</p><div class="mission-weapon"><span class="weapon-square">${reward.short}</span><span>${reward.name}を獲得</span><span style="margin-left:auto">${save.cores[s.id]||0}/3 ◇</span></div></div>`;
   $('missions').append(b);if(s.id<3)stagePreview(b.querySelector('canvas'),s.id);b.addEventListener('click',()=>start(s.id));
  }
+ $('arsenal').innerHTML=WEAPONS.slice(1).map(w=>{const owned=game.unlockedWeapons().some(a=>a.id===w.id);return `<div class="arsenal-item ${owned?'owned':''}" style="--accent:${w.color}"><b>${owned?'✓':'◇'} ${w.name}</b><span>${w.field}</span></div>`;}).join('');
  difficultyUI();
 }
 function difficultyUI(){document.querySelectorAll('[data-difficulty]').forEach(b=>{const selected=b.dataset.difficulty===save.difficulty;b.classList.toggle('chosen',selected);b.setAttribute('aria-pressed',String(selected));});$('difficulty-tip').textContent=DIFFICULTIES[save.difficulty].tip;$('difficulty-setting').value=save.difficulty;}
 function showResult(mode){
  $('result-screen').hidden=false;const clear=mode==='clear',dead=mode==='dead';
- $('result-eyebrow').textContent=clear?'SIGNAL RESTORED':dead?'CONNECTION LOST':'TAKE A BREATH';
+ $('result-eyebrow').textContent=clear?(game.newWeapon&&game.level.reward?'WEAPON GET':'SIGNAL RESTORED'):dead?'CONNECTION LOST':'TAKE A BREATH';
  $('result-symbol').textContent=clear?'✦':dead?'↻':'Ⅱ';
  $('result-title').textContent=clear?(game.level.id===3?'都市に、パルスが戻った。':'ミッションクリア！'):dead?'もう一度、ここから。':'ひとやすみ';
  const reward=WEAPONS.find(w=>w.id===game.level.reward);
- $('result-copy').textContent=clear?(reward?`新武器「${reward.name}」を獲得。${reward.note}`:'すべてのシグナルを復旧！各都市のデータコアとハイスコアに挑戦しよう。'):dead?'チェックポイントから再出発。難しいときは設定でアシストを選べます。':'準備ができたら、冒険を続けよう。';
+ if(clear&&reward){$('result-symbol').textContent=reward.short;$('result-symbol').style.color=reward.color;}else $('result-symbol').style.color='';
+ $('result-symbol').classList.toggle('weapon-get',clear&&!!reward);
+ $('result-title').textContent=clear&&reward?(game.newWeapon?reward.name+' 獲得！':'ミッションクリア！'):$('result-title').textContent;
+ $('result-copy').textContent=clear?(reward?`${reward.note} ${reward.field}`:'すべてのシグナルを復旧！各都市のデータコアとハイスコアに挑戦しよう。'):dead?'チェックポイントから再出発。難しいときは設定でアシストを選べます。':'準備ができたら、冒険を続けよう。';
  $('result-stats').textContent=clear?`SCORE ${String(game.score).padStart(6,'0')}  ·  CORE ${save.cores[game.level.id]||0}/3  ·  ${Math.floor(game.elapsed/60)}:${String(Math.floor(game.elapsed%60)).padStart(2,'0')}`:dead?`CHECKPOINT ${game.checkpoint}/2`:'';
- $('result-primary').textContent=clear?'次のミッションへ →':dead?'リトライ ↻':'プレイを続ける →';
- primaryAction=clear?()=>menu('select'):dead?()=>{sound.unlock();sound.setPaused(false);game.retry();$('result-screen').hidden=true;sync();$('game').focus({preventScroll:true});}:()=>togglePause();
+ const next=clear&&game.level.id<3?([0,1,2].every(i=>save.cleared.includes(i))?3:reward.next):null;
+ $('result-primary').textContent=clear?(next!==null?`${STAGES[next].name}へ →`:'ミッション選択へ →'):dead?'リトライ ↻':'プレイを続ける →';
+ primaryAction=clear?()=>{if(next===null)menu('select');else{start(next);game.equipWeapon(reward.id);updateHud();}}:dead?()=>{sound.unlock();sound.setPaused(false);game.retry();$('result-screen').hidden=true;sync();$('game').focus({preventScroll:true});}:()=>togglePause();
  sync();
 }
 function openHelp(){helpResume=game.mode==='playing';if(helpResume)game.pause();input.clear();$('auto-fire').checked=save.autoFire;$('reduce-motion').checked=save.reducedMotion;difficultyUI();$('settings').showModal();sync();}
@@ -79,7 +86,15 @@ $('start').onclick=()=>{sound.unlock();menu();};$('continue').onclick=()=>{if(sa
 $('brand').onclick=()=>menu('title');$('select-back').onclick=()=>menu('title');
 $('help').onclick=openHelp;$('title-help').onclick=openHelp;$('pause').onclick=()=>togglePause();
 $('result-primary').onclick=()=>primaryAction();$('result-secondary').onclick=()=>menu();
-$('weapon-select').onclick=()=>{if(game.mode==='playing'){sound.unlock();game.cycleWeapon();updateHud();}};
+$('weapon-select').onclick=()=>{
+ if(!['playing','paused'].includes(game.mode))return;weaponResume=game.mode==='playing';if(weaponResume)game.pause();input.clear();sound.unlock();
+ const owned=game.unlockedWeapons();$('weapon-options').replaceChildren();
+ for(const w of WEAPONS){const b=document.createElement('button'),available=owned.some(a=>a.id===w.id);b.className='weapon-option';b.disabled=!available;b.style.setProperty('--accent',w.color);b.setAttribute('aria-pressed',String(game.player.weapon===w.id));
+ b.innerHTML=`<span class="weapon-emblem">${w.short}</span><span><b>${w.name}</b><small>${available?w.note:'ボスを倒すと獲得'}</small><small>${w.field}</small></span><em>${available?(w.id==='pulse'?'∞':Math.floor(game.player.ammo[w.id])+'/28'):'LOCK'}</em>`;
+ b.onclick=()=>{game.equipWeapon(w.id);$('weapon-dialog').close();updateHud();};$('weapon-options').append(b);}
+ $('weapon-dialog').showModal();sync();
+};
+$('weapon-dialog').addEventListener('close',()=>{input.clear();if(weaponResume&&game.mode==='paused')game.resume();weaponResume=false;sync();});
 function soundUI(){$('sound').setAttribute('aria-pressed',String(!save.muted));$('sound').setAttribute('aria-label',save.muted?'音をオンにする':'音をオフにする');$('sound').classList.toggle('muted',save.muted);}
 $('sound').onclick=()=>{sound.unlock();save.muted=!save.muted;sound.setMuted(save.muted);soundUI();persist();};
 $('fullscreen').onclick=async()=>{sound.unlock();try{if(document.fullscreenElement)await document.exitFullscreen();else if($('app').requestFullscreen){await $('app').requestFullscreen();await screen.orientation?.lock?.('landscape').catch(()=>{});}else toast('端末を横向きに。ホーム画面に追加すると広く遊べます。');}catch{toast('端末を横向きにすると、広く遊べます。');}};
@@ -98,6 +113,8 @@ function updateHud(){
  $('difficulty-label').textContent=game.difficulty.name;
  $('core-count').textContent=`◇ ${l.items.filter(i=>i.type==='core'&&game.collected.has(i.id)).length}/3`;
  $('weapon-letter').textContent=w.short;$('weapon-letter').style.color=w.color;$('weapon-name').textContent=w.name;
+ $('weapon-select').title=w.id==='pulse'?'エネルギー無制限':`エネルギー ${Math.floor(p.energy)} / 28`;
+ $('energy-fill').style.background=w.color;$('charge-fill').classList.toggle('full',p.charge>=1);
  $('energy-fill').style.width=`${p.energy/28*100}%`;$('charge-fill').style.width=`${Math.min(1,p.charge)*100}%`;
  $('stage-label').textContent=l.code+' / '+l.en;$('score').textContent=String(game.score).padStart(6,'0');
  $('boss-hud').hidden=!b.active||b.dead;$('boss-name').textContent=l.boss;$('boss-phase').textContent='PHASE 0'+b.phase;$('boss-fill').style.width=`${b.hp/b.maxHp*100}%`;

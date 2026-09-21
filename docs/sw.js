@@ -1,4 +1,4 @@
-const ROOT=new URL('./',self.location.href),PREFIX=`pulse-runner-${ROOT.pathname}-`,CACHE=PREFIX+'v1.0.0';
+const ROOT=new URL('./',self.location.href),PREFIX=`pulse-runner-${ROOT.pathname}-`,CACHE=PREFIX+'v2.0.0';
 const FILES=['./','index.html','review.html','style.css','manifest.webmanifest','assets/icon.svg','assets/icon-192.png','assets/icon-512.png','js/app.js','js/levels.js','js/engine.js','js/render.js','js/input.js','js/audio.js'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES.map(p=>new URL(p,ROOT).href)))));
 // Updates wait until the previous game closes, so a session keeps one coherent version.
