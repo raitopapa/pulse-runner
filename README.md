@@ -72,7 +72,7 @@ npm test
 
 `docs/` を静的配信。`levels.js` はステージと保存形式、`engine.js` は固定60Hzの物理と戦闘、`render.js` はCanvas描画、`input.js` はタッチ／キー／ゲームパッド、`audio.js` はWeb Audio、`app.js` は画面と保存の連携です。描画幅を最大1440に制限し、フレーム遅延時の物理処理を6ステップで打ち切ります。
 
-独立したService Worker・キャッシュ名・manifest scopeを使用。別リポジトリのGitHub Pagesへ公開するため、お菓子ゲームのパスやWorkerとは分離されます。更新時は子の `sw.js` のキャッシュバージョンを変更します。更新ファイルはHTTPキャッシュを再検証して取得。新Workerはプレイ中に強制適用せず、既存画面が閉じた後に切り替わります。GitHub Pagesの Settings → Pages で Deploy from a branch → main → /docs を選択して保存します。ビルドは不要です。
+独立したService Worker・キャッシュ名・manifest scopeを使用。別リポジトリのGitHub Pagesへ公開するため、お菓子ゲームのパスやWorkerとは分離されます。更新時は子の `sw.js` のキャッシュバージョンを変更します。更新ファイルはHTTPキャッシュを再検証して取得。新Workerはプレイ中に強制適用せず、既存画面が閉じた後に切り替わります。旧版が残る場合は [更新画面](https://raitopapa.github.io/pulse-runner/update.html) から明示的に最新版を取得できます。GitHub Pagesの Settings → Pages で Deploy from a branch → main → /docs を選択して保存します。ビルドは不要です。
 
 `review.html` は開発用の画面サイズ確認ページ。実機のタッチ性能・Safari・ゲームパッドの動作確認を代替するものではありません。
 
