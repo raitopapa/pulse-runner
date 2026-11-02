@@ -17,9 +17,10 @@ export class Game{
   const player=this.player;player.maxHp=player.hp=d.hp+(this.save.upgrades?.length||0)*2;player.ammo={arc:28,flame:28,frost:28};
   Object.defineProperty(player,'energy',{enumerable:true,configurable:true,get:()=>player.weapon==='pulse'?28:player.ammo[player.weapon],set:v=>{if(player.weapon!=='pulse')player.ammo[player.weapon]=clamp(v,0,28);}});
   l.hazards.forEach(h=>{h.disabled=false;h.active=false;h.warning=false;});
+  this.engaged=false;this.zone=0;this.zoneTime=0;
   this.devices=l.devices.map(o=>({...o,active:false,flash:0}));this.effects=[];this.dangerZones=[];this.afterimages=[];
-  this.enemies=l.enemies.map((e,i)=>{const h=e.type==='shield'?42:e.type==='drone'||e.type==='sentry'?24:30;return {...e,y:['drone','sentry'].includes(e.type)?e.y:e.y+22-h,startX:e.x,startY:e.y,w:e.type==='shield'?34:30,h,hp:({shield:6,helmet:3,turret:5,hopper:4,sentry:4,drone:3,walker:3})[e.type],vx:-48,vy:0,face:-1,time:i*.47,cooldown:1.3+i*.31,tell:0,hit:0,slow:0,frozen:0,open:false,dead:false,ground:false};});
-  this.platforms=l.platforms.map(p=>({...p,startX:p.x,dx:0,oneWay:true,kind:'moving'}));
+  this.enemies=l.enemies.map((e,i)=>{const h=e.type==='shield'?42:['drone','sentry','wisp'].includes(e.type)?24:e.type==='charger'?32:30;return {...e,y:['drone','sentry','wisp'].includes(e.type)?e.y:e.y+22-h,startX:e.x,startY:e.y,w:e.type==='shield'?34:30,h,hp:({charger:5,mortar:5,wisp:4,shield:6,helmet:3,turret:5,hopper:4,sentry:4,drone:3,walker:3})[e.type],vx:-48,vy:0,face:-1,time:i*.47,cooldown:1.3+i*.31,tell:0,hit:0,slow:0,frozen:0,open:false,dead:false,ground:false};});
+  this.platforms=l.platforms.map(p=>({...p,startX:p.x,startY:p.y,dx:0,dy:0,oneWay:true,kind:p.kind||'moving',active:true,crack:0,respawn:0}));
   this.items=l.items.filter(i=>!this.collected.has(i.id)&&!(i.type==='upgrade'&&this.save.upgrades?.includes(l.id))).map(i=>({...i,w:18,h:18,dead:false}));
   this.bullets=[];this.enemyBullets=[];this.particles=[];this.floats=[];this.shake=0;this.hitstop=0;this.stateTime=0;this.previous={...EMPTY};this.previousJump=false;
   this.boss={x:l.bossX,y:340,w:68,h:80,vx:0,vy:0,hp:l.hp,maxHp:l.hp,active:false,dead:false,state:'sleep',timer:1,pattern:0,face:-1,hit:0,phase:1,action:'shoot'};
@@ -36,12 +37,14 @@ export class Game{
  float(x,y,text,color='#effaff'){this.floats.push({x,y,text,color,life:1});}
  solidsFor(p){const terrain=[...this.level.solids,...this.devices.filter(d=>d.kind==='icewall'&&!d.active),...this.devices.filter(d=>d.active&&d.bridge).map(d=>({...d.bridge,oneWay:true}))];const s=terrain.filter(s=>s.x<p.x+p.w+30&&s.x+s.w>p.x-30);if(this.boss.active&&!this.boss.dead)s.push({x:this.level.gate,y:0,w:24,h:600});return s;}
  move(p,dt,platforms=false){
+  const support=p.support;p.support=null;
+  if(platforms&&support?.active&&p.ground&&p.vy>=0){p.x+=support.dx;p.y+=support.dy;}
   p.wall=0;p.x+=p.vx*dt;
   for(const s of this.solidsFor(p)){if(s.oneWay||!overlap(p,s))continue;if(p.vx>0){p.x=s.x-p.w;p.wall=1;}else if(p.vx<0){p.x=s.x+s.w;p.wall=-1;}p.vx=0;}
   p.x=clamp(p.x,0,this.level.width-p.w);const feet=p.y+p.h;p.y+=p.vy*dt;p.ground=false;p.floorKind='';
-  for(const s of [...this.solidsFor(p),...(platforms?[...this.platforms,...this.enemies.filter(e=>e.frozen>0&&!e.dead).map(e=>({x:e.x-5,y:e.y,w:e.w+10,h:e.h,kind:'ice',oneWay:true}))]:[])]){
+  for(const s of [...this.solidsFor(p),...(platforms?[...this.platforms.filter(s=>s.active),...this.enemies.filter(e=>e.frozen>0&&!e.dead).map(e=>({x:e.x-5,y:e.y,w:e.w+10,h:e.h,kind:'ice',oneWay:true}))]:[])]){
    if(!overlap(p,s))continue;
-   if(p.vy>=0&&feet<=s.y+6){p.y=s.y-p.h;p.vy=0;p.ground=true;p.floorKind=s.kind;if(s.kind==='moving')p.x+=s.dx;}
+   if(p.vy>=0&&feet<=s.y+6){p.y=s.y-p.h;p.vy=0;p.ground=true;p.floorKind=s.kind;if(this.platforms.includes(s)){p.support=s;if(s.kind==='crumble'&&!s.crack)s.crack=.68;}}
    else if(!s.oneWay&&p.vy<0&&p.y+p.h>s.y+s.h){p.y=s.y+s.h;p.vy=0;}
   }
  }
@@ -79,7 +82,14 @@ export class Game{
   if(this.mode==='dying'||this.mode==='clearing'){this.stateTime-=dt;if(this.stateTime<=0){this.mode=this.mode==='dying'?'dead':'clear';this.emit(this.mode);}return;}
   if(this.hitstop>0){this.hitstop-=dt;return;}
   const edge=Object.fromEntries(Object.keys(EMPTY).map(k=>[k,!!input[k]&&!this.previous[k]])),release=!input.fire&&this.previous.fire;this.previous={...input};this.elapsed+=dt;this.intro=Math.max(0,this.intro-dt);this.bossIntro=Math.max(0,this.bossIntro-dt);
-  for(const s of this.platforms){const x=s.x;s.x=s.startX+Math.sin(this.clock*s.speed)*s.range;s.dx=s.x-x;}
+  this.zoneTime=Math.max(0,this.zoneTime-dt);
+  for(const s of this.platforms){
+   if(s.kind==='crumble'){
+    if(s.crack>0){s.crack=Math.max(0,s.crack-dt);if(!s.crack){s.active=false;s.respawn=2.6;this.burst(s.x+s.w/2,s.y,'#b9e8ff',12,85);}}
+    else if(!s.active){s.respawn-=dt;if(s.respawn<=0&&!overlap(this.player,{x:s.x,y:s.y-4,w:s.w,h:s.h+8}))s.active=true;}
+   }else{const x=s.x,y=s.y;s.x=s.startX+Math.sin(this.clock*s.speed)*s.range;s.y=s.startY+(Math.cos(this.clock*s.speed)-1)*(s.rangeY||0)/2;s.dx=s.x-x;s.dy=s.y-y;}
+  }
+  if(input.left||input.right||input.jump||input.fire||input.dash||this.save.autoFire)this.engaged=true;
   const p=this.player,d=this.difficulty,dir=Number(!!input.right)-Number(!!input.left);
   for(const k of['invincible','dashTime','dashCooldown','jumpLock','cooldown','shootAnim'])p[k]=Math.max(0,p[k]-dt);for(const key of Object.keys(p.ammo))p.ammo[key]=Math.min(28,p.ammo[key]+dt*.65);
   if(p.ground){p.coyote=.12;p.airDash=true;p.airJump=true;}else p.coyote=Math.max(0,p.coyote-dt);
@@ -92,11 +102,11 @@ export class Game{
    else if(d.double&&p.airJump){p.vy=-d.jump*.88;p.airJump=false;p.buffer=0;this.burst(p.x+14,p.y+44,'#a8ebff',10,70);this.emit('sfx','jump');}
   }
   if(!input.jump&&this.previousJump&&p.vy<-220)p.vy*=.5;this.previousJump=!!input.jump;
-  if(p.dashTime<=0)p.vy=Math.min(850,p.vy+d.gravity*dt);else{p.vy=0;if(Math.floor(this.clock*60)%2===0)this.particles.push({x:p.x+14,y:p.y+22,vx:-p.face*80,vy:0,life:.18,max:.18,size:18,color:'#6ae0ff'});}
+  if(p.dashTime<=0)p.vy=Math.min(850,p.vy+d.gravity*dt*(input.jump&&Math.abs(p.vy)<100?.55:1));else{p.vy=0;if(Math.floor(this.clock*60)%2===0)this.particles.push({x:p.x+14,y:p.y+22,vx:-p.face*80,vy:0,life:.18,max:.18,size:18,color:'#6ae0ff'});}
   if(p.wall&&p.vy>100&&dir===p.wall)p.vy=100;if(p.ground&&p.floorKind==='belt')p.x+=66*dt;
   for(const device of this.devices){device.flash=Math.max(0,device.flash-dt);if(device.kind==='wind'&&!device.active&&Math.abs(p.x-device.x)<170&&p.y>230)p.vx-=95*dt*8;}
   if(p.dashTime>0&&Math.floor(this.clock*60)%3===0)this.afterimages.push({x:p.x,y:p.y,face:p.face,weapon:p.weapon,life:.2});
-  this.move(p,dt,true);if(p.y>590){this.die();return;}
+  const landingSpeed=p.vy,wasGrounded=p.ground;this.move(p,dt,true);if(!wasGrounded&&p.ground&&landingSpeed>360)this.effect(p.x+14,p.y+p.h,'#c3e9ed','dust',26,.24);const zone=this.level.zones.findLastIndex(z=>p.x>=z.x);if(zone!==this.zone){this.zone=zone;this.zoneTime=2.3;}if(p.y>590){this.die();return;}
   if(edge.fire){p.charge=0;if(p.cooldown<=0)this.fire();}if(input.fire){p.charge=Math.min(1.2,p.charge+dt);if(p.charge<.48&&p.cooldown<=0)this.fire();if(p.charge>=1&&p.charge-dt<1)this.emit('sfx','ready');}
   if(release){if(p.charge>=.4)this.fire(p.charge);p.charge=0;}if(this.save.autoFire&&!input.fire&&p.cooldown<=0)this.fire();
   this.level.checkpoints.forEach((cp,i)=>{if(i+1>this.checkpoint&&p.x+p.w>cp.x&&p.x<cp.x+42&&p.y+p.h>cp.y-90){this.checkpoint=i+1;p.hp=p.maxHp;for(const k of Object.keys(p.ammo))p.ammo[k]=28;this.persistCheckpoint();this.float(cp.x,cp.y-90,'CHECKPOINT','#9effc5');this.emit('checkpoint');this.burst(cp.x+8,cp.y-48,'#9effc5',25,90);}});
@@ -111,14 +121,35 @@ export class Game{
  updateEnemies(dt){
   const p=this.player,speed=this.difficulty.speed;
   for(const e of this.enemies){
-   if(e.dead||Math.abs(e.x-p.x)>1000)continue;e.hit=Math.max(0,e.hit-dt);e.slow=Math.max(0,e.slow-dt);e.frozen=Math.max(0,e.frozen-dt);
-   if(e.frozen>0){e.vx=0;e.vy=0;continue;}e.time+=dt;e.face=p.x<e.x?-1:1;const es=speed*(e.slow>0?.42:1);
+   if(e.dead)continue;e.hit=Math.max(0,e.hit-dt);e.slow=Math.max(0,e.slow-dt);e.frozen=Math.max(0,e.frozen-dt);
+   if(e.frozen>0){e.vx=0;e.vy=0;continue;}
+   const onScreen=e.x+e.w>this.camera+12&&e.x<this.camera+this.viewW-24;
+   if(!this.engaged||!onScreen){e.awake=false;e.cooldown=Math.max(.85,e.cooldown);continue;}
+   e.awake=true;e.time+=dt;if(!e.rush)e.face=p.x<e.x?-1:1;const es=speed*(e.slow>0?.42:1);
    if(e.type==='drone'){e.x=e.startX+Math.sin(e.time*.8)*76;e.y=e.startY+Math.sin(e.time*2)*29;}
    else if(e.type==='walker'||e.type==='shield'){
     e.vx=(e.type==='shield'?e.face:(e.vx>=0?1:-1))*(e.type==='shield'?36:65)*es;
     const ahead={x:e.x+(e.vx>0?e.w+8:-8),y:e.y+e.h+4,w:4,h:10};if(e.ground&&!this.level.solids.some(s=>overlap(ahead,s)))e.vx=e.type==='shield'?0:-e.vx;
     e.vy=Math.min(700,e.vy+1700*dt);const vx=e.vx;this.move(e,dt);if(e.wall)e.vx=-vx;
    }else if(e.type==='hopper'){if(e.ground&&e.cooldown<=0){e.vy=-490;e.vx=e.face*145*es;e.cooldown=1.7/es;this.effect(e.x+15,e.y+30,'#eaa57c','dust',18,.2);}e.vy=Math.min(700,e.vy+1700*dt);this.move(e,dt);e.cooldown-=dt;if(e.ground)e.vx=0;}
+   if(e.type==='charger'){
+    e.cooldown-=dt*es;e.tell=e.cooldown<=.75&&e.cooldown>0?e.cooldown:0;
+    if(!e.rush&&e.cooldown<=0){e.rush=.62;e.attackFace=e.face;e.cooldown=2.5;e.tell=0;this.emit('sfx','dash');}
+    e.vx=e.rush>0?e.attackFace*360*es:0;e.vy=Math.min(700,e.vy+1700*dt);
+    const ahead={x:e.x+(e.vx>0?e.w+10:-10),y:e.y+e.h+3,w:3,h:9};
+    if(e.ground&&e.rush>0&&!this.level.solids.some(s=>overlap(ahead,s))){e.rush=0;e.vx=0;}
+    this.move(e,dt);if(e.wall)e.rush=0;if(e.rush>0){e.rush=Math.max(0,e.rush-dt);if(Math.floor(e.time*30)%3===0)this.effect(e.x+15,e.y+32,'#ffb482','dust',12,.18);}
+   }
+   if(e.type==='mortar'||e.type==='wisp'){
+    if(e.type==='wisp'&&e.cooldown>.8){e.x=e.startX+Math.sin(e.time)*45;e.y=e.startY+Math.sin(e.time*1.8)*22;}
+    e.cooldown-=dt*es;e.tell=e.cooldown<=.8&&e.cooldown>0?e.cooldown:0;
+    if(e.tell>0&&!e.aim)e.aim={x:p.x+14,y:p.y+24};
+    if(e.cooldown<=0){const aim=e.aim||{x:p.x+14,y:p.y+24};
+     if(e.type==='mortar'){const q=this.enemyShot(e.x+15,e.y,aim.x,aim.y,200,'#ffa36e',0,'fireball');q.gravity=760;q.vy=-390;q.vx=clamp((aim.x-e.x)/1.05,-300,300);q.life=2.1;}
+     else for(const a of[-.17,.17])this.enemyShot(e.x+15,e.y+12,aim.x,aim.y,220*speed,'#ea9fe0',a,'shard');
+     this.emit('sfx','enemyShot');e.cooldown=e.type==='mortar'?3:2.7;e.aim=null;e.tell=0;
+    }
+   }
    if(e.type==='helmet'){
     e.open=e.time%3>1.65;e.tell=e.time%3>1.25&&!e.open?.3:0;e.cooldown-=dt*es;
     if(e.open&&e.cooldown<=0&&Math.abs(e.x-p.x)<560){for(const a of[-.2,0,.2])this.enemyShot(e.x+15,e.y+12,p.x+14,p.y+22,210*speed,'#ffe59a',a);e.cooldown=3;}
@@ -179,7 +210,7 @@ export class Game{
     if(b.age>.42){const dx=this.player.x+14-b.x,dy=this.player.y+14-b.y,len=Math.max(1,Math.hypot(dx,dy));b.vx=dx/len*610;b.vy=dy/len*610;if(len<24){b.life=0;this.effect(b.x,b.y,b.color,'ring',20,.15);continue;}}
    }else if(b.weapon==='flame'){b.vy=Math.min(640,b.vy+1200*dt);}
    b.x+=b.vx*dt;b.y+=b.vy*dt;
-   if(b.weapon==='flame')for(const solid of [...this.level.solids,...this.platforms,...this.devices.filter(d=>d.active&&d.bridge).map(d=>d.bridge)])if(b.vy>=0&&b.x+b.w>solid.x&&b.x<solid.x+solid.w&&oldY+b.h<=solid.y+8&&b.y+b.h>=solid.y){b.y=solid.y-b.h;b.vy=0;b.ground=true;break;}
+   if(b.weapon==='flame')for(const solid of [...this.level.solids,...this.platforms.filter(s=>s.active),...this.devices.filter(d=>d.active&&d.bridge).map(d=>d.bridge)])if(b.vy>=0&&b.x+b.w>solid.x&&b.x<solid.x+solid.w&&oldY+b.h<=solid.y+8&&b.y+b.h>=solid.y){b.y=solid.y-b.h;b.vy=0;b.ground=true;break;}
    if(b.trail){b.trail.push({x:b.x+b.w/2,y:b.y+b.h/2});if(b.trail.length>7)b.trail.shift();}
    const swept={x:Math.min(x,b.x),y:Math.min(oldY,b.y),w:b.w+Math.abs(b.x-x),h:b.h+Math.abs(b.y-oldY)};
    for(const device of this.devices)if(overlap(swept,device)){this.activateDevice(device,b.weapon);if(device.kind==='icewall'&&!device.active)b.life=0;}
@@ -203,11 +234,11 @@ export class Game{
    }
   }
   for(const b of this.enemyBullets){
-   b.age=(b.age||0)+dt;if(b.gravity)b.vy+=b.gravity*dt;
+   const oldX=b.x,oldY=b.y;b.age=(b.age||0)+dt;if(b.gravity)b.vy+=b.gravity*dt;
    if(b.kind==='scythe'&&b.age>.85){const dx=this.boss.x+34-b.x,dy=this.boss.y+30-b.y,len=Math.max(1,Math.hypot(dx,dy));b.vx=dx/len*320;b.vy=dy/len*320;if(len<22)b.life=0;}
    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
    if(!['wave','scythe','feather'].includes(b.kind)&&this.level.solids.some(s=>!s.oneWay&&overlap(b,s)))b.life=0;
-   if(b.life>0&&overlap(b,this.player)){this.hurt(b.kind==='wave'?4:3,b.x);b.life=0;}
+   if(b.life>0&&overlap({x:Math.min(oldX,b.x),y:Math.min(oldY,b.y),w:b.w+Math.abs(b.x-oldX),h:b.h+Math.abs(b.y-oldY)},{x:this.player.x+4,y:this.player.y+4,w:this.player.w-8,h:this.player.h-6})){this.hurt(b.kind==='wave'?4:3,b.x);b.life=0;}
   }
   this.bullets=this.bullets.filter(b=>b.life>0&&b.y<620);this.enemyBullets=this.enemyBullets.filter(b=>b.life>0);
  }

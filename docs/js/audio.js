@@ -1,5 +1,6 @@
+import {PATCHES,SAMPLE_RATE,ROOT_NOTE,ARRANGEMENTS,makeSample,scoreStep} from './instruments.js';
 // New score/patches, using the envelope and look-ahead technique from Bramble's Dash.
-// Original 16-bar scores: pulse lead + countermelody + triangle bass + noise percussion.
+// Original melodies arranged for generated PCM brass, guitar, strings, bell, bass and drums.
 const notes=s=>s.trim().split(/\s+/).map(n=>n==='-'?null:Number(n));
 const phrase=(a,b)=>{a=notes(a);b=notes(b);return [...a,...a.map((n,i)=>n===null?null:i>23?n+2:n),...b,...a.map((n,i)=>n===null?null:i>23?n-2:n)];};
 export const SCORES={
@@ -14,28 +15,36 @@ export const SCORES={
 const tracks=SCORES;
 const hz=n=>440*2**((n-69)/12);
 export class Sound{
- constructor(muted=false){this.muted=muted;this.track='menu';this.paused=false;this.nodes=new Set();this.step=0;}
- unlock(){try{if(!this.ctx){this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.master=this.ctx.createGain();this.master.gain.value=this.muted?0:.48;this.master.connect(this.ctx.destination);this.music=this.ctx.createGain();this.music.gain.value=.26;this.music.connect(this.master);this.fx=this.ctx.createGain();this.fx.gain.value=.68;this.fx.connect(this.master);this.noise=this.ctx.createBuffer(1,this.ctx.sampleRate*.18,this.ctx.sampleRate);const a=this.noise.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1;this.next=this.ctx.currentTime+.07;this.timer=setInterval(()=>this.schedule(),35);}if(!this.paused)this.ctx.resume().catch(()=>{});}catch{}}
+ constructor(muted=false){this.musicVolume=.8;this.sfxVolume=.85;this.muted=muted;this.track='menu';this.paused=false;this.nodes=new Set();this.step=0;}
+ unlock(){try{if(!this.ctx){this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.master=this.ctx.createGain();this.master.gain.value=this.muted?0:.48;this.master.connect(this.ctx.destination);this.music=this.ctx.createGain();this.music.gain.value=this.musicVolume*.775;this.music.connect(this.master);this.setupBank();this.fx=this.ctx.createGain();this.fx.gain.value=this.sfxVolume*.8;this.fx.connect(this.master);this.noise=this.ctx.createBuffer(1,this.ctx.sampleRate*.18,this.ctx.sampleRate);const a=this.noise.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1;this.next=this.ctx.currentTime+.07;this.timer=setInterval(()=>this.schedule(),35);}if(!this.paused)this.ctx.resume().catch(()=>{});}catch{}}
  tone(f,dur=.1,vol=.15,type='square',delay=0,end=f,music=false){if(!this.ctx||this.muted||this.paused)return;const t=this.ctx.currentTime+Math.max(0,delay),o=this.ctx.createOscillator(),g=this.ctx.createGain();if(music&&type==='square'&&this.ctx.createPeriodicWave){const duty=(tracks[this.track]||tracks.menu).duty;this.waves??=new Map();if(!this.waves.has(duty)){const real=new Float32Array(33),imag=new Float32Array(33);for(let k=1;k<33;k++){real[k]=Math.sin(2*Math.PI*k*duty)/(Math.PI*k);imag[k]=(1-Math.cos(2*Math.PI*k*duty))/(Math.PI*k);}this.waves.set(duty,this.ctx.createPeriodicWave(real,imag));}o.setPeriodicWave(this.waves.get(duty));}else o.type=type;o.frequency.setValueAtTime(Math.max(1,f),t);o.frequency.exponentialRampToValueAtTime(Math.max(1,end),t+dur);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(music?this.music:this.fx);o.start(t);o.stop(t+dur+.02);this.nodes.add(o);o.onended=()=>{this.nodes.delete(o);o.disconnect();g.disconnect();};}
  hiss(vol=.2,dur=.1,delay=0,music=false){if(!this.ctx||this.muted||this.paused)return;const t=this.ctx.currentTime+Math.max(0,delay),s=this.ctx.createBufferSource(),g=this.ctx.createGain(),f=this.ctx.createBiquadFilter();s.buffer=this.noise;f.type='highpass';f.frequency.value=music?5800:900;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f);f.connect(g);g.connect(music?this.music:this.fx);s.start(t);s.stop(t+dur);this.nodes.add(s);s.onended=()=>{this.nodes.delete(s);s.disconnect();g.disconnect();f.disconnect();};}
  stopNodes(){for(const n of this.nodes)try{n.stop();}catch{}this.nodes.clear();}
  setTrack(id){if(this.track===id)return;this.track=id;this.step=0;if(this.ctx){this.stopNodes();this.next=this.ctx.currentTime+.09;}}
- setMuted(v){this.muted=v;if(this.master){this.master.gain.setTargetAtTime(v?0:.48,this.ctx.currentTime,.025);this.next=this.ctx.currentTime+.06;}}
+ setMuted(v){this.muted=v;if(v)this.stopNodes();if(this.master){this.master.gain.setTargetAtTime(v?0:.48,this.ctx.currentTime,.025);this.next=this.ctx.currentTime+.06;}}
  setPaused(v){this.paused=v;if(!this.ctx)return;if(v){this.stopNodes();this.ctx.suspend().catch(()=>{});}else{this.next=this.ctx.currentTime+.08;this.ctx.resume().catch(()=>{});}}
+ setVolumes(music,fx){this.musicVolume=music;this.sfxVolume=fx;if(this.ctx){this.music.gain.setTargetAtTime(music*.775,this.ctx.currentTime,.03);this.fx.gain.setTargetAtTime(fx*.8,this.ctx.currentTime,.03);}}
+ setupBank(){
+  this.samples=new Map();for(const name of Object.keys(PATCHES)){const pcm=makeSample(name),buffer=this.ctx.createBuffer(1,pcm.length,SAMPLE_RATE);buffer.getChannelData(0).set(pcm);this.samples.set(name,buffer);}
+  this.room=this.ctx.createConvolver();const len=Math.ceil(this.ctx.sampleRate*.55),ir=this.ctx.createBuffer(2,len,this.ctx.sampleRate);let seed=9182;
+  for(let ch=0;ch<2;ch++){const a=ir.getChannelData(ch);for(let i=0;i<len;i++){seed=(Math.imul(seed,1664525)+1013904223)|0;a[i]=((seed>>>0)/2147483648-1)*Math.pow(1-i/len,3)*.22;}}
+  this.room.buffer=ir;this.wet=this.ctx.createGain();this.wet.gain.value=.13;this.music.connect(this.room);this.room.connect(this.wet);this.wet.connect(this.master);
+ }
+ sample(event,delay=0){
+  if(!this.ctx||this.muted||this.paused||!this.samples)return;
+  if(this.nodes.size>=48){const oldest=this.nodes.values().next().value;try{oldest.stop();}catch{}this.nodes.delete(oldest);}
+  const patch=PATCHES[event.patch],source=this.ctx.createBufferSource(),gain=this.ctx.createGain(),pan=this.ctx.createStereoPanner(),t=this.ctx.currentTime+Math.max(0,delay+event.offset),end=t+event.duration;
+  source.buffer=this.samples.get(event.patch);source.playbackRate.value=patch.drum?1:2**((event.note-ROOT_NOTE)/12);pan.pan.value=event.pan;
+  gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(event.volume,t+Math.min(patch.attack,event.duration*.3));gain.gain.setValueAtTime(event.volume*.8,end);gain.gain.linearRampToValueAtTime(0,end+patch.release);
+  source.connect(gain);gain.connect(pan);pan.connect(this.music);source.start(t);source.stop(end+patch.release+.01);this.nodes.add(source);source.onended=()=>{this.nodes.delete(source);source.disconnect();gain.disconnect();pan.disconnect();};
+ }
  schedule(){
   if(!this.ctx||this.muted||this.paused||this.ctx.state!=='running')return;
-  const cfg=tracks[this.track]||tracks.menu,eighth=60/cfg.bpm/2;
+  const score=tracks[this.track]||tracks.menu,cfg=ARRANGEMENTS[this.track]||ARRANGEMENTS.menu,eighth=30/cfg.bpm;
   if(this.next<this.ctx.currentTime-.2)this.next=this.ctx.currentTime+.025;
   for(let n=0;n<8&&this.next<this.ctx.currentTime+.14;n++){
-   const i=this.step%cfg.lead.length,bar=Math.floor(i/8),beat=i%8,root=cfg.roots[bar%cfg.roots.length],delay=Math.max(0,this.next-this.ctx.currentTime),melody=cfg.lead[i];
-   if(melody!==null)this.tone(hz(melody),eighth*(cfg.lead[(i+1)%cfg.lead.length]===null?1.7:.78),.11,'square',delay,hz(melody),true);
-   // The counter voice enters in the bridge; arpeggios leave room around the main hook.
-   if(this.track!=='victory'&&(beat%2===1||bar>=8)){const arp=[12,19,24,19,15,19,22,19][beat],note=root+arp;this.tone(hz(note),eighth*.48,bar>=8?.045:.025,'square',delay,hz(note),true);}
-   const bass=root-12+([0,0,7,0,12,0,7,10][beat]);this.tone(hz(bass),eighth*.83,.27,'triangle',delay,hz(bass),true);
-   if(beat===0||beat===4||(this.track===1&&beat===3))this.tone(145,.12,.24,'sine',delay,38,true);
-   if(beat===2||beat===6){this.hiss(.12,.07,delay,true);this.tone(180,.065,.05,'triangle',delay,80,true);}
-   if(this.track!=='menu'&&this.track!=='victory')this.hiss(beat%2?.033:.021,.022,delay,true);
-   if(bar%4===3&&beat>=6){this.hiss(.075,.04,delay+eighth/2,true);this.tone(90+beat*10,.08,.07,'triangle',delay+eighth/2,45,true);}
+   if(this.track==='victory'&&this.step>=score.lead.length)return;
+   for(const event of scoreStep(score,this.track,this.step))this.sample(event,Math.max(0,this.next-this.ctx.currentTime));
    this.next+=eighth;this.step++;
   }
  }
