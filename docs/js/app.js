@@ -2,16 +2,18 @@ import {STEP,SAVE_KEY,STAGES,WEAPONS,DIFFICULTIES,freshSave,validateSave} from '
 import {Game} from './engine.js';
 import {Renderer,stagePreview} from './render.js';
 import {Input} from './input.js';
-import {Sound} from './audio.js';
+import {Sound,SCORES} from './audio.js';
+import {ARRANGEMENTS} from './instruments.js';
 
 const $=id=>document.getElementById(id);
 let stored=null;try{stored=JSON.parse(localStorage.getItem(SAVE_KEY));}catch{}
 const save=stored?validateSave(stored):freshSave();
 if(!stored)save.reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const sound=new Sound(save.muted);
+const sound=new Sound(save.muted);sound.setVolumes(save.musicVolume,save.sfxVolume);
 const game=new Game(save,onEvent);
 const renderer=new Renderer($('game'),game);
 const input=new Input($('controls'),()=>sound.unlock(),togglePause);
+let helpTrack='menu',previewing=false;
 let toastTimer,primaryAction=()=>{},helpResume=false,weaponResume=false,lastMode='',hudTime=0,storageFailed=false;
 
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch{if(!storageFailed){storageFailed=true;toast('このブラウザでは保存できません。現在のプレイは続けられます。');}}}
@@ -80,8 +82,8 @@ function showResult(mode){
  primaryAction=clear?()=>{if(next===null)menu('select');else{start(next);game.equipWeapon(reward.id);updateHud();}}:dead?()=>{sound.unlock();sound.setPaused(false);game.retry();$('result-screen').hidden=true;sync();$('game').focus({preventScroll:true});}:()=>togglePause();
  sync();
 }
-function openHelp(){helpResume=game.mode==='playing';if(helpResume)game.pause();input.clear();$('auto-fire').checked=save.autoFire;$('reduce-motion').checked=save.reducedMotion;difficultyUI();$('settings').showModal();sync();}
-$('settings').addEventListener('close',()=>{if(helpResume&&game.mode==='paused')game.resume();helpResume=false;sync();});
+function openHelp(){helpTrack=sound.track;previewing=false;$('music-preview').textContent='試聴する ▶';$('music-volume').value=save.musicVolume*100;$('sfx-volume').value=save.sfxVolume*100;helpResume=game.mode==='playing';if(helpResume)game.pause();input.clear();$('auto-fire').checked=save.autoFire;$('reduce-motion').checked=save.reducedMotion;difficultyUI();$('settings').showModal();sync();}
+$('settings').addEventListener('close',()=>{if(previewing){sound.setTrack(helpTrack);sound.setPaused(game.mode==='paused');previewing=false;}if(helpResume&&game.mode==='paused')game.resume();helpResume=false;sync();});
 $('start').onclick=()=>{sound.unlock();menu();};$('continue').onclick=()=>{if(save.checkpoint)start(save.checkpoint.stage,true);};
 $('brand').onclick=()=>menu('title');$('select-back').onclick=()=>menu('title');
 $('help').onclick=openHelp;$('title-help').onclick=openHelp;$('pause').onclick=()=>togglePause();
@@ -101,6 +103,10 @@ $('fullscreen').onclick=async()=>{sound.unlock();try{if(document.fullscreenEleme
 document.addEventListener('fullscreenchange',()=>{$('fullscreen').setAttribute('aria-pressed',String(!!document.fullscreenElement));renderer.resize();});
 document.querySelectorAll('[data-difficulty]').forEach(b=>b.onclick=()=>{save.difficulty=b.dataset.difficulty;difficultyUI();persist();});
 $('difficulty-setting').onchange=e=>{save.difficulty=e.target.value;difficultyUI();persist();};
+for(const[id,key]of[['music-volume','musicVolume'],['sfx-volume','sfxVolume']])$(id).oninput=e=>{save[key]=Number(e.target.value)/100;sound.setVolumes(save.musicVolume,save.sfxVolume);persist();};
+for(const[id,cfg]of Object.entries(ARRANGEMENTS)){const option=document.createElement('option');option.value=id;option.textContent=SCORES[id].title;$('music-track').append(option);}
+$('music-track').onchange=()=>{$('music-description').textContent=ARRANGEMENTS[$('music-track').value].description;if(previewing)sound.setTrack($('music-track').value);};$('music-track').onchange();
+$('music-preview').onclick=()=>{if(previewing){sound.setTrack(helpTrack);sound.setPaused(game.mode==='paused');previewing=false;$('music-preview').textContent='試聴する ▶';return;}sound.setPaused(false);sound.unlock();save.muted=false;sound.setMuted(false);soundUI();persist();sound.setTrack($('music-track').value);previewing=true;$('music-preview').textContent='試聴を止める ■';};
 $('auto-fire').onchange=e=>{save.autoFire=e.target.checked;persist();};$('reduce-motion').onchange=e=>{save.reducedMotion=e.target.checked;persist();};
 window.addEventListener('resize',()=>{input.clear();renderer.resize();});
 window.addEventListener('pagehide',()=>{if(['playing','paused','dying','dead'].includes(game.mode))game.persistCheckpoint();sound.setPaused(true);});

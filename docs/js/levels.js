@@ -17,9 +17,9 @@ export const STAGES=[
  {id:3,code:'Ω',name:'ネクサス・コア',en:'NEXUS CORE',sub:'すべてをつなぐ心臓',boss:'ネクサス・プライム',theme:'core',accent:'#ff8ecb',sky:['#100c25','#39284f','#724057'],tile:'#503e5b',dark:'#2d223e',reward:null,weak:null,hp:96,gimmick:'3つのボス撃破で解放'}
 ];
 const INTEL=[
- {district:'AEROSPACE / 01',brief:'空中都市の送電網が暴走。空を守っていたファルコンを解放せよ。',bossTip:'羽根弾の隙間を抜け、急降下の予告線から離れる。',route:'氷でタービン停止・空中ショートカット',patterns:['feather','dive','storm'],gimmick:'強風タービン / 空中足場'},
+ {district:'AEROSPACE / 01',brief:'空中都市の送電網が暴走。空を守っていたファルコンを解放せよ。',bossTip:'羽根弾の隙間を抜け、急降下の予告線から離れる。',route:'氷でタービン停止・空中ショートカット',patterns:['feather','dive','storm'],gimmick:'昇降リフト / 強風 / 空中ダッシュ'},
  {district:'INDUSTRIAL / 02',brief:'終わらない増産命令で炉心が過熱。ゴーレムを止めて工場を冷却せよ。',bossTip:'着地の衝撃波をジャンプ。火柱の予告から退避。',route:'電撃で発電装置起動・炉の罠を停止',patterns:['quake','furnace','flamewall'],gimmick:'溶鉱炉 / プレス機 / コンベア'},
- {district:'ARCHIVE / 03',brief:'都市の記憶を封じた冷却施設。氷壁の奥でマンティスが待つ。',bossTip:'戻る鎌に注意。天井の氷柱は影を見て回避。',route:'炎で氷壁を溶かす・保管庫への裏道',patterns:['scythe','skate','icicle'],gimmick:'氷壁 / 滑る床 / 警備ロボット'},
+ {district:'ARCHIVE / 03',brief:'都市の記憶を封じた冷却施設。氷壁の奥でマンティスが待つ。',bossTip:'戻る鎌に注意。天井の氷柱は影を見て回避。',route:'炎で氷壁を溶かす・保管庫への裏道',patterns:['scythe','skate','icicle'],gimmick:'崩れる薄氷 / 氷壁 / 浮遊砲台'},
  {district:'CONTROL / Ω',brief:'守護機の記憶をつなぎ、暴走命令の発信源ネクサスへ。3つの力で都市を取り戻せ。',bossTip:'各守護機の技を連続使用。特殊武器すべてが有効。',route:'発電・融解・凍結の3つを使い分ける',patterns:['storm','skate','quake','scythe','furnace'],gimmick:'3つの力で制御中枢を攻略'}
 ];
 STAGES.forEach((stage,i)=>Object.assign(stage,INTEL[i]));
@@ -35,7 +35,11 @@ export function createLevel(id){
  const shelves=[[[480,340,128],[1016,332,160],[1240,260,128],[1744,330,144],[1976,250,144],[2208,332,128],[2768,330,128],[2952,254,160],[3168,330,128],[3680,334,112],[3904,268,128]],[[464,340,144],[952,330,176],[1192,254,176],[1400,336,96],[1808,328,160],[2048,246,160],[2640,330,144],[2856,250,176],[3096,330,112],[3536,330,144],[3760,258,160],[3960,334,96]],[[480,338,144],[1032,328,160],[1264,250,160],[1864,332,144],[2072,252,144],[2680,334,128],[2888,252,144],[3096,330,144],[3584,332,144],[3816,252,144]],[[480,330,144],[1056,332,144],[1280,250,144],[1824,330,144],[2048,250,160],[2656,330,160],[2872,250,144],[3096,328,120],[3552,330,144],[3776,250,144]]];
  shelves[id].forEach(([x,y,w])=>ledge(x,y,w,id===2?'ice':'solid'));
  const cores=[[[1300,228],[2044,218],[3952,236]],[[1280,222],[2128,214],[3832,226]],[[1344,218],[2144,220],[3888,220]],[[1352,218],[2120,218],[3848,218]]];cores[id].forEach(([x,y])=>item(x,y,'core'));
- if(id===0)l.platforms.push({x:3312,y:338,w:100,h:20,range:120,speed:1.05});
+ const lifts=[[[664,352,0,84],[3312,338,120,0]],[[1510,344,0,78]],[[2350,332,0,72]],[[1560,352,0,74],[4070,342,100,0]]];
+ for(const[x,y,range,rangeY]of lifts[id])l.platforms.push({x,y,w:100,h:20,range,rangeY,speed:1.05,kind:'moving'});
+ if(id===2||id===3)for(const[x,y]of(id===2?[[680,326],[780,326],[3020,254],[3200,312]]:[[2320,328],[2420,328]]))l.platforms.push({x,y,w:76,h:18,kind:'crumble',range:0,speed:0});
+ const districts=[['離陸デッキ','送電タワー','風の回廊','守護機ハンガー'],['搬入ベルト','圧延プレス','炉心冷却区','鋳造ドック'],['凍結エントランス','記憶の書架','薄氷の回廊','冷却中枢'],['接続ポート','電力ルーティング','統合試験区','中央制御室']];
+ l.zones=districts[id].map((name,i)=>({x:[0,1600,2700,4380][i],name,index:i}));
  if(id===1||id===3)for(const [x,offset]of[[1360,0],[3024,1.4],[3590,.5]])l.hazards.push({x,y:326,w:34,h:94,kind:'vent',period:3.8,offset});
  if(id===2||id===3)for(const[x,offset]of[[1456,0],[3140,1]])l.hazards.push({x,y:296,w:26,h:124,kind:'laser',period:4.2,offset});
  foe(570,390);foe(1120,388,'turret');foe(1350,224,'drone');foe(1860,390,'hopper');foe(2330,390);
@@ -55,7 +59,10 @@ export function createLevel(id){
  [[480,398,'helmet'],[1080,398,'shield'],[1400,198,'sentry'],[1880,398,'hopper'],[2320,398,'helmet'],[2790,298,'turret'],[3160,398,'shield'],[3660,398,'hopper'],[3980,190,'sentry']],
  [[510,398,'shield'],[1110,302,'drone'],[1440,398,'helmet'],[1890,398,'shield'],[2300,198,'sentry'],[2740,398,'hopper'],[3030,222,'drone'],[3720,398,'helmet'],[4000,398,'shield']],
  [[510,398,'helmet'],[1120,398,'shield'],[1370,210,'drone'],[1870,398,'hopper'],[2380,198,'sentry'],[2760,398,'helmet'],[3160,240,'drone'],[3660,398,'shield'],[4020,190,'sentry']]
- ];encounters[id].forEach(([x,y,type])=>foe(x,y,type));
+ ];
+ const specialists=[[[2380,398,'charger'],[3200,246,'wisp']],[[1880,398,'mortar'],[3160,398,'charger'],[3980,398,'mortar']],[[1110,302,'wisp'],[2740,398,'charger'],[3030,222,'wisp']],[[1870,398,'charger'],[2760,398,'mortar'],[3160,240,'wisp']]];
+ for(const[x,y,type]of specialists[id]){const i=encounters[id].findIndex(e=>e[0]===x);encounters[id][i]=[x,y,type];}
+ encounters[id].forEach(([x,y,type])=>foe(x,y,type));
  const fan=(x,name,bridge)=>({id:name,x,y:330,w:46,h:90,kind:'wind',weapon:'frost',label:'FROST → WIND OFF',bridge});
  const relay=(x,name,bridge)=>({id:name,x,y:352,w:36,h:68,kind:'relay',weapon:'arc',label:'ARC → POWER ON',bridge});
  const ice=(x,y,name,bridge)=>({id:name,x,y,w:46,h:150,kind:'icewall',weapon:'flame',label:'FLAME → MELT',bridge});
@@ -66,11 +73,12 @@ export function createLevel(id){
  for(const d of l.devices)l.signs.push({x:d.x-90,y:d.y-32,text:d.label});
  return l;
 }
-export const freshSave=()=>({version:1,cleared:[],upgrades:[],cores:{},best:{},checkpoint:null,difficulty:'normal',muted:false,autoFire:false,reducedMotion:false});
+export const freshSave=()=>({version:1,cleared:[],upgrades:[],cores:{},best:{},checkpoint:null,difficulty:'normal',muted:false,musicVolume:.8,sfxVolume:.85,autoFire:false,reducedMotion:false});
 export function validateSave(raw){
  const s=freshSave();if(!raw||raw.version!==1)return s;
  s.cleared=[...new Set(Array.isArray(raw.cleared)?raw.cleared.filter(n=>Number.isInteger(n)&&n>=0&&n<4):[])];
  s.upgrades=[...new Set(Array.isArray(raw.upgrades)?raw.upgrades.filter(n=>Number.isInteger(n)&&n>=0&&n<3):[])];
+ for(const k of['musicVolume','sfxVolume'])if(Number.isFinite(raw[k]))s[k]=Math.max(0,Math.min(1,raw[k]));
  s.difficulty=Object.hasOwn(DIFFICULTIES,raw.difficulty)?raw.difficulty:'normal';for(const k of['muted','autoFire','reducedMotion'])s[k]=raw[k]===true;
  for(let i=0;i<4;i++){if(Number.isFinite(raw.cores?.[i]))s.cores[i]=Math.max(0,Math.min(3,Math.floor(raw.cores[i])));if(Number.isFinite(raw.best?.[i]))s.best[i]=Math.max(0,Math.floor(raw.best[i]));}
  const c=raw.checkpoint;

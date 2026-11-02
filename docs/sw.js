@@ -1,5 +1,5 @@
-const ROOT=new URL('./',self.location.href),PREFIX=`pulse-runner-${ROOT.pathname}-`,CACHE=PREFIX+'v2.0.2';
-const FILES=['./','index.html','review.html','update.html','js/update.js','style.css','manifest.webmanifest','assets/icon.svg','assets/icon-192.png','assets/icon-512.png','js/app.js','js/levels.js','js/engine.js','js/render.js','js/input.js','js/audio.js'];
+const ROOT=new URL('./',self.location.href),PREFIX=`pulse-runner-${ROOT.pathname}-`,CACHE=PREFIX+'v3.0.0';
+const FILES=['./','index.html','review.html','update.html','js/update.js','style.css','manifest.webmanifest','assets/icon.svg','assets/icon-192.png','assets/icon-512.png','js/app.js','js/levels.js','js/engine.js','js/render.js','js/input.js','js/audio.js','js/instruments.js'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES.map(p=>new Request(new URL(p,ROOT).href,{cache:'reload'}))))));
 // Updates wait until the previous game closes, so a session keeps one coherent version.
 self.addEventListener('activate',event=>event.waitUntil((async()=>{await Promise.all((await caches.keys()).filter(k=>k.startsWith(PREFIX)&&k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();})()));
